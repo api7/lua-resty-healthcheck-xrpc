@@ -755,7 +755,6 @@ function checker:report_xrpc_status(ip, port, hostname, status, check)
   end
 
   return incr_counter(self, status_type, ip, port, hostname, limit, ctr)
-
 end
 
 --- Report a failure on TCP level.
