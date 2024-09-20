@@ -2,9 +2,13 @@ name: CI Linux
 
 on:
   push:
-    branches: [ master ]
+    branches:
+    - master
+    - release/2.3
   pull_request:
-    branches: [ master ]
+    branches:
+    - master
+    - release/2.3
 
 jobs:
   build:
