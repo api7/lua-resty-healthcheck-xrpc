@@ -51,7 +51,7 @@ qq{
                             statuses = { 500 },
                             failures = 2,
                         },
-                        handler = function(node, conf)end
+                        xrpc_handler = function(node, conf)end
                     },
                 },
             })
@@ -110,7 +110,7 @@ qq{
                             failures = 3,
 
                         },
-                        handler = function(node, conf)end
+                        xrpc_handler = function(node, conf)end
                     },
                 },
             })
@@ -171,7 +171,7 @@ qq{
                             tcp_failures = 2,
                             failures = 3,
                         },
-                        handler = function(node, conf)end
+                        xrpc_handler = function(node, conf)end
                     }
                 },
 
@@ -231,7 +231,7 @@ qq{
                             tcp_failures = 2,
                             failures = 0,
                         },
-                        handler = function(node, conf)end
+                        xrpc_handler = function(node, conf)end
                     },
                 },
             })
@@ -289,7 +289,7 @@ qq{
                             interval = 999, -- we don't want active checks
                             failures = 3,
                         },
-                        handler = function(node, conf)end
+                        xrpc_handler = function(node, conf)end
                     },
                 },
 
@@ -363,7 +363,7 @@ qq{
                             statuses = { 501 },
                             failures = 2,
                         },
-                        handler = function(node, conf)end
+                        xrpc_handler = function(node, conf)end
                     },
                 },
 
@@ -407,8 +407,7 @@ event: target status '(127.0.0.1:2119)' from 'false' to 'true'
 
 
 
-=== TEST 7: start xrpc healthcheck with active.unhealthy.failures == 4 and active.health.successes == 2
---- ONLY
+=== TEST 7: start xrpc healthcheck with active.unhealthy.failures == 2 and active.health.successes == 2
 --- http_config eval
 qq{
     $::HttpConfig
@@ -459,7 +458,7 @@ qq{
                             interval = 0.5, -- we don't want active checks
                             failures = 2,
                         },
-                        handler = function(node, conf)
+                        xrpc_handler = function(node, conf)
                             local http = require('resty.http')
                             local httpc = http.new()
                             local res, err = httpc:request_uri("http://127.0.0.1:2119/status", {
@@ -478,9 +477,9 @@ qq{
             checker:add_target("127.0.0.1", 2119, nil, true)
             ngx.sleep(0.5)
             ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- true
-            ngx.sleep(2.0)
+            ngx.sleep(3.1)
             ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- false
-            ngx.sleep(4.0)
+            ngx.sleep(4.2)
             ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- true
         }
     }

@@ -891,7 +891,7 @@ end
 -- Runs a single healthcheck probe
 function checker:run_single_check(ip, port, hostname, hostheader)
   if self.checks.active.type == "xrpc" then
-    local ok, status = self.checks.active.handler({
+    local ok, status = self.checks.active.xrpc_handler({
       host = ip,
       port = port,
       domain = hostname,
@@ -1327,7 +1327,7 @@ local defaults = {
       concurrency = 10,
       http_path = "/",
       https_verify_certificate = true,
-      handler = NO_DEFAULT,
+      xrpc_handler = NO_DEFAULT,
       xrpc_conf = {},
       healthy = {
         interval = 0, -- 0 = disabled by default
@@ -1456,7 +1456,7 @@ function _M.new(opts)
   end
 
   if self.checks.active.type == "xrpc" then
-    assert(self.checks.active.handler, "required option 'checks.active.handler' is missing")
+    assert(self.checks.active.xrpc_handler, "required option 'checks.active.xrpc_handler' is missing")
     assert(self.checks.active.unhealthy.failures < 255, "checks.active.unhealthy.tcp_failures must be at most 254")
   end
 
