@@ -407,7 +407,8 @@ event: target status '(127.0.0.1:2119)' from 'false' to 'true'
 
 
 
-=== TEST 7: start xrpc healthcheck with active.unhealthy.failures == 3 and active.health.successes == 2
+=== TEST 7: start xrpc healthcheck with active.unhealthy.failures == 4 and active.health.successes == 2
+--- ONLY
 --- http_config eval
 qq{
     $::HttpConfig
@@ -456,7 +457,7 @@ qq{
                         },
                         unhealthy  = {
                             interval = 0.5, -- we don't want active checks
-                            failures = 3,
+                            failures = 2,
                         },
                         handler = function(node, conf)
                             local http = require('resty.http')
@@ -477,9 +478,9 @@ qq{
             checker:add_target("127.0.0.1", 2119, nil, true)
             ngx.sleep(0.5)
             ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- true
-            ngx.sleep(3.5)
+            ngx.sleep(2.0)
             ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- false
-            ngx.sleep(3.5)
+            ngx.sleep(4.0)
             ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- true
         }
     }
@@ -493,9 +494,8 @@ true
 --- error_log
 checking healthy targets: nothing to do
 checking unhealthy targets: nothing to do
-unhealthy XRPC increment (1/3) for '(127.0.0.1:2119)'
-unhealthy XRPC increment (2/3) for '(127.0.0.1:2119)'
-unhealthy XRPC increment (3/3) for '(127.0.0.1:2119)'
+unhealthy XRPC increment (1/2) for '(127.0.0.1:2119)'
+unhealthy XRPC increment (2/2) for '(127.0.0.1:2119)'
 event: target status '(127.0.0.1:2119)' from 'true' to 'false'
 healthy SUCCESS increment (1/2)
 healthy SUCCESS increment (2/2)
