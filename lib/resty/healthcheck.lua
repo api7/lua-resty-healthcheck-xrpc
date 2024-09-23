@@ -54,6 +54,7 @@ local EMPTY = setmetatable({},{
 -- Counters: a 32-bit shm integer can hold up to four 8-bit counters.
 local CTR_SUCCESS = 0x00000001
 local CTR_HTTP    = 0x00000100
+local CTR_XRPC    = 0x00001000
 local CTR_TCP     = 0x00010000
 local CTR_TIMEOUT = 0x01000000
 
@@ -63,6 +64,7 @@ local MASK_SUCCESS = 0x000000ff
 local COUNTER_NAMES = {
   [CTR_SUCCESS] = "SUCCESS",
   [CTR_HTTP]    = "HTTP",
+  [CTR_XRPC]    = "XRPC",
   [CTR_TCP]     = "TCP",
   [CTR_TIMEOUT] = "TIMEOUT",
 }
@@ -659,6 +661,9 @@ function checker:report_failure(ip, port, hostname, check)
   if self.checks[check or "passive"].type == "tcp" then
     limit = checks.unhealthy.tcp_failures
     ctr_type = CTR_TCP
+  elseif self.checks[check or "passive"].type == "xrpc" then
+    limit = checks.unhealthy.failures
+    ctr_type = CTR_XRPC
   else
     limit = checks.unhealthy.http_failures
     ctr_type = CTR_HTTP
@@ -723,6 +728,33 @@ function checker:report_http_status(ip, port, hostname, http_status, check)
 
   return incr_counter(self, status_type, ip, port, hostname, limit, ctr)
 
+end
+
+
+function checker:report_xrpc_status(ip, port, hostname, status, check)
+  status = tonumber(status) or 0
+
+  if check ~= "active" then
+    return
+  end
+
+  local checks = self.checks[check or "active"]
+
+  local status_type, limit, ctr
+  if checks.healthy.statuses[status] then
+    status_type = "healthy"
+    limit = checks.healthy.successes
+    ctr = CTR_SUCCESS
+  elseif checks.unhealthy.statuses[status]
+      or status == 0 then
+    status_type = "unhealthy"
+    limit = checks.unhealthy.failures
+    ctr = CTR_XRPC
+  else
+    return
+  end
+
+  return incr_counter(self, status_type, ip, port, hostname, limit, ctr)
 end
 
 --- Report a failure on TCP level.
@@ -857,6 +889,23 @@ end
 
 -- Runs a single healthcheck probe
 function checker:run_single_check(ip, port, hostname, hostheader)
+  if self.checks.active.type == "xrpc" then
+    local ok, status = self.checks.active.xrpc_handler({
+      host = ip,
+      port = port,
+      domain = hostname,
+    }, self.xrpc_conf)
+
+    if not ok then
+      return self:report_failure(ip, port, hostname, "active")
+    end
+
+    if status then
+      return self:report_xrpc_status(ip, port, hostname, status, "active")
+    end
+
+    return self:report_success(ip, port, hostname, "active")
+  end
 
   local sock, err = ngx.socket.tcp()
   if not sock then
@@ -1277,15 +1326,20 @@ local defaults = {
       concurrency = 10,
       http_path = "/",
       https_verify_certificate = true,
+      xrpc_handler = NO_DEFAULT,
+      xrpc_conf = {},
       healthy = {
         interval = 0, -- 0 = disabled by default
         http_statuses = { 200, 302 },
+        statuses = { 200, 302 },
         successes = 2,
       },
       unhealthy = {
         interval = 0, -- 0 = disabled by default
         http_statuses = { 429, 404,
                           500, 501, 502, 503, 504, 505 },
+        statuses = { 500, 501 },
+        failures = 2,
         tcp_failures = 2,
         timeouts = 3,
         http_failures = 5,
@@ -1325,6 +1379,7 @@ do
     http = true,
     tcp = true,
     https = true,
+    xrpc = true,
   }
   check_valid_type = function(var, val)
     assert(valid_types[val],
@@ -1399,6 +1454,11 @@ function _M.new(opts)
     self.test_get_counter = test_get_counter
   end
 
+  if self.checks.active.type == "xrpc" then
+    assert(self.checks.active.xrpc_handler, "required option 'checks.active.xrpc_handler' is missing")
+    assert(self.checks.active.unhealthy.failures < 255, "checks.active.unhealthy.tcp_failures must be at most 254")
+  end
+
   assert(self.name, "required option 'name' is missing")
   assert(self.shm_name, "required option 'shm_name' is missing")
 
@@ -1420,6 +1480,8 @@ function _M.new(opts)
   to_set(self.checks.active.healthy, "http_statuses")
   to_set(self.checks.passive.unhealthy, "http_statuses")
   to_set(self.checks.passive.healthy, "http_statuses")
+  to_set(self.checks.active.healthy, "statuses")
+  to_set(self.checks.active.unhealthy, "statuses")
 
   -- decorate with methods and constants
   self.events = EVENTS

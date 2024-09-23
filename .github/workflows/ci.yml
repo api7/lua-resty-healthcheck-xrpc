@@ -27,6 +27,7 @@ jobs:
         run: |
           sudo cpanm --notest Test::Nginx > build.log 2>&1 || (cat build.log && exit 1)
           sudo luarocks install luacheck
+          sudo luarocks install api7-lua-resty-http 0.2.2-0
 
       - name: Linux Install
         run: |
