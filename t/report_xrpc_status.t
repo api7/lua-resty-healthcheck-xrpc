@@ -6,7 +6,7 @@ workers(1);
 my $pwd = cwd();
 
 our $HttpConfig = qq{
-    lua_package_path "$pwd/lib/?.lua;;";
+    lua_package_path "$pwd/lib/?.lua;$pwd/t/?.lua;;";
     lua_shared_dict test_shm 8m;
     lua_shared_dict my_worker_events 8m;
 };
@@ -473,6 +473,149 @@ qq{
                     },
                 },
             })
+            ngx.sleep(0.1) -- wait for initial timers to run once
+            checker:add_target("127.0.0.1", 2119, nil, true)
+            ngx.sleep(0.5)
+            ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- true
+            ngx.sleep(3.1)
+            ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- false
+            ngx.sleep(4.2)
+            ngx.say(checker:get_target_status("127.0.0.1", 2119, nil))  -- true
+        }
+    }
+--- request
+GET /t
+--- timeout: 10
+--- response_body
+true
+false
+true
+--- error_log
+checking healthy targets: nothing to do
+checking unhealthy targets: nothing to do
+unhealthy XRPC increment (1/2) for '(127.0.0.1:2119)'
+unhealthy XRPC increment (2/2) for '(127.0.0.1:2119)'
+event: target status '(127.0.0.1:2119)' from 'true' to 'false'
+healthy SUCCESS increment (1/2)
+healthy SUCCESS increment (2/2)
+event: target status '(127.0.0.1:2119)' from 'false' to 'true'
+
+
+
+=== TEST 8: start xrpc healthcheck with xrpc_conf
+--- http_config eval
+qq{
+    $::HttpConfig
+
+    server {
+        listen 2119;
+        location = /status {
+            return 200;
+        }
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            local we = require "resty.worker.events"
+            assert(we.configure{ shm = "my_worker_events", interval = 0.1 })
+            local healthcheck = require("resty.healthcheck")
+            local checker = healthcheck.new({
+                name = "testing",
+                shm_name = "test_shm",
+                type = "xrpc",
+                checks = {
+                    active = {
+                        healthy  = {
+                            interval = 0.5, -- we don't want active checks
+                            successes = 2,
+                        },
+                        unhealthy  = {
+                            interval = 0.5, -- we don't want active checks
+                            failures = 2,
+                        },
+                        xrpc_conf = {
+                            timeout = 1000,
+                        },
+                        xrpc_handler = function(node, conf)
+                            ngx.log(ngx.INFO, "node.host: ", node.host, ", node.port: ", node.port)
+                            ngx.log(ngx.INFO, "conf.timeout: ", conf.timeout)
+                        end
+                    },
+                },
+            })
+            ngx.sleep(0.1) -- wait for initial timers to run once
+            checker:add_target("127.0.0.1", 2119, nil, true)
+            ngx.sleep(1)
+        }
+    }
+--- request
+GET /t
+--- timeout: 10
+--- error_log
+node.host: 127.0.0.1, node.port: 2119
+conf.timeout: 1000
+
+
+
+=== TEST 9: start xrpc healthcheck with xrpc_function_module
+--- http_config eval
+qq{
+    $::HttpConfig
+
+    lua_shared_dict request_counters 1m;
+
+    server {
+        listen 2119;
+
+        location /status {
+            content_by_lua_block {
+                local uri = ngx.var.request_uri
+                local counter = ngx.shared.request_counters
+
+                counter:incr(uri, 1, 0)
+
+                local current_count = counter:get(uri) or 0
+
+                if current_count < 4 or current_count > 8 then
+                    ngx.status = 200
+                    ngx.say("OK")
+                else
+                    ngx.status = 500
+                    ngx.say("ERROR")
+                end
+            }
+        }
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            local we = require "resty.worker.events"
+            assert(we.configure{ shm = "my_worker_events", interval = 0.1 })
+            local healthcheck = require("resty.healthcheck")
+            local checker, err = healthcheck.new({
+                name = "testing",
+                shm_name = "test_shm",
+                type = "xrpc",
+                checks = {
+                    active = {
+                        healthy  = {
+                            interval = 0.5, -- we don't want active checks
+                            successes = 2,
+                        },
+                        unhealthy  = {
+                            interval = 0.5, -- we don't want active checks
+                            failures = 2,
+                        },
+                        xrpc_function_module = "util.http_handler",
+                    },
+                },
+            })
+            if not checker then
+                ngx.log(ngx.ERR, "failed to create healthcheck: ", err)
+                return
+            end
             ngx.sleep(0.1) -- wait for initial timers to run once
             checker:add_target("127.0.0.1", 2119, nil, true)
             ngx.sleep(0.5)
