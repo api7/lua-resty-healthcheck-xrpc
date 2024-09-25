@@ -890,12 +890,14 @@ end
 -- Runs a single healthcheck probe
 function checker:run_single_check(ip, port, hostname, hostheader)
   if self.checks.active.type == "xrpc" then
-    local ok, status = self.checks.active.xrpc_handler({
+    local handler = self.checks.active.xrpc_handler
+    local node = {
       host = ip,
       port = port,
       domain = hostname,
-    }, self.xrpc_conf)
-
+    }
+    local conf = self.checks.active.xrpc_conf
+    local ok, status = handler(node, conf)
     if not ok then
       return self:report_failure(ip, port, hostname, "active")
     end
@@ -1294,6 +1296,8 @@ local function fill_in_settings(opts, defaults, ctx)
       if type(v) == "table" then
         if default[1] then -- do not recurse on arrays
           obj[k] = v
+        elseif default == NO_DEFAULT then
+          obj[k] = deepcopy(v)
         else
           ctx[#ctx + 1] = k
           obj[k] = fill_in_settings(v, default, ctx)
@@ -1326,8 +1330,9 @@ local defaults = {
       concurrency = 10,
       http_path = "/",
       https_verify_certificate = true,
+      xrpc_function_module = NO_DEFAULT,
       xrpc_handler = NO_DEFAULT,
-      xrpc_conf = {},
+      xrpc_conf = NO_DEFAULT,
       healthy = {
         interval = 0, -- 0 = disabled by default
         http_statuses = { 200, 302 },
@@ -1455,6 +1460,14 @@ function _M.new(opts)
   end
 
   if self.checks.active.type == "xrpc" then
+    local module = self.checks.active.xrpc_function_module
+    if module then
+      local ok, handler = pcall(require, module)
+      if not ok then
+        return nil, "failed to load xrpc handler module: " .. handler
+      end
+      self.checks.active.xrpc_handler = handler
+    end
     assert(self.checks.active.xrpc_handler, "required option 'checks.active.xrpc_handler' is missing")
     assert(self.checks.active.unhealthy.failures < 255, "checks.active.unhealthy.tcp_failures must be at most 254")
   end
